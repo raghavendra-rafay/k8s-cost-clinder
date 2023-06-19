@@ -13,7 +13,7 @@ This project is a Python-based server that helps identify the AWS EC2 instances 
 
   ```bash
   git clone git@github.com:raghavendra-rafay/k8s-cost-clinder.git
-  cd kubernetes-cluster-instance-identification
+  cd k8s-cost-clinder
   ```
 
 2. (Optional) Create and activate a virtual environment:
