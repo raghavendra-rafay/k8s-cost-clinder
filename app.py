@@ -190,7 +190,7 @@ def identify_instance():
     df['Price'] = df['Price'].astype(float)  # Convert price to float
 
     # Split the data into training and test sets
-    X = df[['vCPU', 'Memory']]
+    X = df[['vCPU', 'Memory', 'Price']]
     y = df['InstanceType']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -203,8 +203,8 @@ def identify_instance():
 
     # Create a DataFrame for the cluster requests and limits
     cluster_data = pd.DataFrame([
-        {'vCPU': total_requests_cpu, 'Memory': total_requests_memory},
-        {'vCPU': total_limits_cpu, 'Memory': total_limits_memory}
+        {'vCPU': total_requests_cpu, 'Memory': total_requests_memory, 'Price': 0},
+        {'vCPU': total_limits_cpu, 'Memory': total_limits_memory, 'Price': 0}
     ])
 
     # Predict the common neighbor instance type for the cluster
