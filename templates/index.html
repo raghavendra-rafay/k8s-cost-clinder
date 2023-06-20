@@ -4,10 +4,11 @@
     <title>Kubernetes Cluster Instance Identification</title>
 </head>
 <body>
-    <h1>Kubernetes Cluster Instance Identification</h1>
-    <form action="/identify" method="post">
-        <label for="kubeconfig">Kubeconfig:</label><br>
-        <textarea name="kubeconfig" id="kubeconfig" rows="10" cols="50" placeholder="Paste your kubeconfig here..." required></textarea><br><br>
+    <h1>Kubernetes Cluster Info</h1>
+    <form action="/identify-instance" method="POST" enctype="multipart/form-data">
+        <label for="kubeconfig">Upload kubeconfig file:</label>
+        <input type="file" id="kubeconfig" name="kubeconfig" accept="text/yaml, .yaml, .yml">
+        <br><br>
         <input type="submit" value="Identify Instance">
     </form>
 </body>

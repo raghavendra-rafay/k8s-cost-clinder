@@ -5,11 +5,29 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from kubernetes import client, config
 from flask import Flask, request, jsonify, render_template
+import csv
+import re
+import json
 
 app = Flask(__name__)
 
 def fetch_aws_instance_data():
     # Fetch AWS instance specifications
+
+    instance_data = []
+    with open('aws/aws_data.csv') as file_obj:
+        reader_obj = csv.reader(file_obj)
+        next(reader_obj)
+        for row in reader_obj:
+            instance_data.append({
+                'InstanceType': row[0],
+                'vCPU': row[1],
+                'Memory': row[2],
+                'Price': row[3]
+            })
+    return instance_data
+
+    '''
     instance_spec_url = "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json"
     instance_specs = requests.get(instance_spec_url).json()
 
@@ -26,9 +44,27 @@ def fetch_aws_instance_data():
             })
 
     return instance_data
+    '''
 
 def fetch_azure_instance_data():
     # Fetch Azure instance specifications
+    instance_data = []
+    with open("azure/azure.json", 'r') as json_file:
+        data = json.load(json_file)
+        for item in data:
+            #print(item)
+            if item.get("CPU") is None or item.get("Memory") == None or item.get("Cost") == None:
+                print("A parameter is not present", item)
+                continue
+            instance_data.append({
+                'InstanceType': item["InstanceType"],
+                'vCPU': item["CPU"],
+                'Memory': str(item["Memory"]) + " GiB",
+                'Price': item["Cost"]
+            })
+    return instance_data
+
+    '''
     instance_spec_url = "https://prices.azure.com/api/retail/prices?$filter=serviceName eq 'Virtual Machines' and priceType eq 'Consumption' and armRegionName eq 'your_region'"
     instance_specs = requests.get(instance_spec_url).json()
 
@@ -45,6 +81,7 @@ def fetch_azure_instance_data():
             })
 
     return instance_data
+    '''
 
 def get_total_resource_requests_and_limits():
     # Load Kubernetes configuration from the provided kubeconfig file
@@ -95,23 +132,38 @@ def get_total_resource_requests_and_limits():
 
     return total_requests_cpu, total_requests_memory, total_limits_cpu, total_limits_memory
 
+
+def extract_value_and_unit(string):
+    pattern = r'(\d+(\.\d+)?)\s*([a-zA-Z]+)?'
+    match = re.search(pattern, string)
+
+    if match:
+        value = float(match.group(1))
+        unit = match.group(3) or ''
+        return value, unit
+    else:
+        return None
+
 def parse_quantity(quantity):
     # Parse the quantity value and convert it to CPU or memory value
-    value = quantity.value
-    unit = quantity.unit
+    value, unit = extract_value_and_unit(quantity)
 
     if unit == 'n':
+        return value / 1000000
+    if unit == '':
+        return value
+    if unit == 'm':
         return value / 1000
     elif unit == 'Ki':
         return value / 1024
     elif unit == 'Mi':
-        return value
+        return value / 1024
     elif unit == 'Gi':
-        return value * 1024
+        return value
     elif unit == 'Ti':
-        return value * 1024 * 1024
+        return value * 1024
     elif unit == 'Pi':
-        return value * 1024 * 1024 * 1024
+        return value * 1024 * 1024
     else:
         return 0
 
@@ -134,11 +186,11 @@ def identify_instance():
     df = pd.DataFrame(instance_data)
 
     # Preprocess the data
-    df['Memory'] = df['Memory'].str.extract('(\d+)').astype(int)  # Extract memory value in GB
+    df['Memory'] = df['Memory'].str.extract('(\d+)').astype(float)  # Extract memory value in GB
     df['Price'] = df['Price'].astype(float)  # Convert price to float
 
     # Split the data into training and test sets
-    X = df[['vCPU', 'Memory', 'Storage']]
+    X = df[['vCPU', 'Memory', 'Price']]
     y = df['InstanceType']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -151,8 +203,8 @@ def identify_instance():
 
     # Create a DataFrame for the cluster requests and limits
     cluster_data = pd.DataFrame([
-        {'vCPU': total_requests_cpu, 'Memory': total_requests_memory, 'Storage': 0},
-        {'vCPU': total_limits_cpu, 'Memory': total_limits_memory, 'Storage': 0}
+        {'vCPU': total_requests_cpu, 'Memory': total_requests_memory, 'Price': 0},
+        {'vCPU': total_limits_cpu, 'Memory': total_limits_memory, 'Price': 0}
     ])
 
     # Predict the common neighbor instance type for the cluster

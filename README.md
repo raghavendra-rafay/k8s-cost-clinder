@@ -13,7 +13,7 @@ This project is a Python-based server that helps identify the AWS EC2 instances 
 
   ```bash
   git clone git@github.com:raghavendra-rafay/k8s-cost-clinder.git
-  cd kubernetes-cluster-instance-identification
+  cd k8s-cost-clinder
   ```
 
 2. (Optional) Create and activate a virtual environment:
@@ -51,7 +51,7 @@ Open your web browser and go to http://localhost:5000.
 
 2. Run the Docker container:
   ```bash
-  docker run -p 5000:5000 --name flask-server-container flask-server
+  docker run -p 9000:5000 --name flask-server-container flask-server
   ```
 
 3. Access the server:
