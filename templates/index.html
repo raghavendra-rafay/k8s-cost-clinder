@@ -4,12 +4,26 @@
     <title>Kubernetes Cluster Instance Identification</title>
 </head>
 <body>
-    <h1>Kubernetes Cluster Info</h1>
-    <form action="/identify-instance" method="POST" enctype="multipart/form-data">
-        <label for="kubeconfig">Upload kubeconfig file:</label>
-        <input type="file" id="kubeconfig" name="kubeconfig" accept="text/yaml, .yaml, .yml">
-        <br><br>
+    <h1>Kubernetes Cluster Instance Identification</h1>
+    <form id="identifyForm" method="POST" enctype="multipart/form-data">
+        <label for="kubeconfig">Upload kubeconfig file:</label><br>
+        <input type="file" id="kubeconfig" name="kubeconfig" accept="text/yaml, .yaml, .yml"><br><br>
+        <label for="api">Select API:</label><br>
+        <select name="api" id="api" required>
+            <option value="scikit-learn">Scikit-Learn</option>
+            <option value="openapi">OpenAPI</option>
+        </select><br><br>
         <input type="submit" value="Identify Instance">
     </form>
+
+    <script>
+        document.getElementById("identifyForm").addEventListener("submit", function(event) {
+            event.preventDefault();
+            var selectedApi = document.getElementById("api").value;
+            var actionUrl = selectedApi === "scikit-learn" ? "/scikit-learn/identify" : "/openapi/identify";
+            this.action = actionUrl;
+            this.submit();
+        });
+    </script>
 </body>
 </html>

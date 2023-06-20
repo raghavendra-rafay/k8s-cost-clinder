@@ -1,14 +1,15 @@
 import os
 import requests
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.neighbors import KNeighborsClassifier
-from kubernetes import client, config
-from flask import Flask, request, jsonify, render_template
 import csv
 import re
 import json
 
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from kubernetes import client, config
+from flask import Flask, request, jsonify, render_template
+from notebook.main import OpenApiModel
 app = Flask(__name__)
 
 def fetch_aws_instance_data():
@@ -171,35 +172,10 @@ def parse_quantity(quantity):
 def index():
     return render_template('index.html')
 
-@app.route('/identify-instance', methods=['POST'])
-def identify_instance():
-    # Fetch AWS EC2 instance data
-    aws_instance_data = fetch_aws_instance_data()
-
-    # Fetch Azure VM instance data
-    azure_instance_data = fetch_azure_instance_data()
-
-    # Combine AWS and Azure instance data
-    instance_data = aws_instance_data + azure_instance_data
-
-    # Create a pandas DataFrame
-    df = pd.DataFrame(instance_data)
-
-    # Preprocess the data
-    df['Memory'] = df['Memory'].str.extract('(\d+)').astype(float)  # Extract memory value in GB
-    df['Price'] = df['Price'].astype(float)  # Convert price to float
-
-    # Split the data into training and test sets
-    X = df[['vCPU', 'Memory', 'Price']]
-    y = df['InstanceType']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
+@app.route("/scikit-learn/identify", methods=["POST"])
+def scikit_learn_identify():
     # Call the function to fetch total CPU and memory requests and limits
     total_requests_cpu, total_requests_memory, total_limits_cpu, total_limits_memory = get_total_resource_requests_and_limits()
-
-    # Create and train the KNN classifier
-    knn = KNeighborsClassifier(n_neighbors=3)
-    knn.fit(X_train, y_train)
 
     # Create a DataFrame for the cluster requests and limits
     cluster_data = pd.DataFrame([
@@ -220,5 +196,42 @@ def identify_instance():
 
     return jsonify(response)
 
+@app.route("/openapi/identify", methods=["POST"])
+def openapi_identify():
+    # Call the function to fetch total CPU and memory requests and limits
+    total_requests_cpu, total_requests_memory, total_limits_cpu, total_limits_memory = get_total_resource_requests_and_limits()
+    return openapi_model.get_instance(total_requests_cpu, total_requests_memory)
+
+def build_scikit_model(knn):
+    # Fetch AWS EC2 instance data
+    # aws_instance_data = fetch_aws_instance_data()
+
+    # Fetch Azure VM instance data
+    azure_instance_data = fetch_azure_instance_data()
+
+    # Combine AWS and Azure instance data
+    # instance_data = aws_instance_data + azure_instance_data
+    instance_data = azure_instance_data
+
+    # Create a pandas DataFrame
+    df = pd.DataFrame(instance_data)
+
+    # Preprocess the data
+    df['Memory'] = df['Memory'].str.extract('(\d+)').astype(float)  # Extract memory value in GB
+    df['Price'] = df['Price'].astype(float)  # Convert price to float
+
+    # Split the data into training and test sets
+    X = df[['vCPU', 'Memory', 'Price']]
+    y = df['InstanceType']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    knn.fit(X_train, y_train)
+
+
+
 if __name__ == '__main__':
+    # Create and train the KNN classifier
+    knn = KNeighborsClassifier(n_neighbors=3)
+    build_scikit_model(knn=knn)
+    openapi_model = OpenApiModel("aws/aws_data.csv")
+
     app.run(debug=True)

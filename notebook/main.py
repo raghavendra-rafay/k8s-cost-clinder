@@ -1,12 +1,14 @@
 import pandas as pd
 import tiktoken
 import openai
+import os
 import numpy as np
 from scipy.spatial.distance import euclidean
 from dotenv import dotenv_values
 import streamlit as st
+from numpy.linalg import norm
 
-openai.api_key = dotenv_values(".env")["OPENAI_API_KEY"]
+openai.api_key = os.environ.get("OPENAI_API_KEY") or dotenv_values(".env")["OPENAI_API_KEY"]
 
 def prepare_data(csv, encoding):
     df = pd.read_csv(csv)
@@ -24,7 +26,8 @@ def get_df_embeddings(df: pd.DataFrame) -> dict[tuple[str, str], list[float]]:
     return { idx: get_text_embedding(r.summarized) for idx, r in df.iterrows()}
 
 def calculate_vector_similarity(x: list[float], y: list[float]) -> float:
-    return euclidean(np.array(x), np.array(y))
+    return np.dot(np.array(x), np.array(y))
+    #return euclidean(np.array(x), np.array(y))
 
 def get_docs_with_similarity(query: str, df_embedding: dict[(str, str), np.array]) -> list[float, (str, str)]:
     query_embedding = get_text_embedding(query)
@@ -87,6 +90,19 @@ def app():
     separator_len = len(encoding.encode("\n* "))
     app_init(df, document_embeddings, separator_len)
 
+class OpenApiModel:
+    PROMPT_STR = 'Please suggest me cost effective instance_type(s) whose vCPUs >= {vCPU} and and Memory in GiB >= {memory} and How many instances will be required.'
+    def __init__(self, location="aws.csv") -> None:
+        encoding = tiktoken.get_encoding("cl100k_base")
+        df = prepare_data(location, encoding)
+        self.datafile = df
+        document_embeddings = get_df_embeddings(df)
+        self.document_embeddings = document_embeddings
+        self.separator_len = len(encoding.encode("\n* "))
+
+    def get_instance(self, vcpu, memory):
+        query = self.PROMPT_STR.format(vCPU=vcpu, memory=memory)
+        return get_answer(query, self.datafile, self.document_embeddings, self.separator_len)
 
 if __name__ == "__main__":
     app()
