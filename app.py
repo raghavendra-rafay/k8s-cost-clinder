@@ -10,21 +10,22 @@ from sklearn.neighbors import KNeighborsClassifier
 from kubernetes import client, config
 from flask import Flask, request, jsonify, render_template
 from notebook.main import OpenApiModel
-app = Flask(__name__)
 
+# Create and train the KNN classifier
 def fetch_aws_instance_data():
     # Fetch AWS instance specifications
+    # Headers Region,InstanceType,CPU,Memory,Cost
 
     instance_data = []
-    with open('aws/aws_data.csv') as file_obj:
+    with open('aws/aws_data_with_region.csv') as file_obj:
         reader_obj = csv.reader(file_obj)
         next(reader_obj)
         for row in reader_obj:
             instance_data.append({
-                'InstanceType': row[0],
-                'vCPU': row[1],
-                'Memory': row[2],
-                'Price': row[3]
+                'InstanceType': row[1],
+                'vCPU': row[2],
+                'Memory': row[3],
+                'Price': row[4]
             })
     return instance_data
 
@@ -168,51 +169,16 @@ def parse_quantity(quantity):
     else:
         return 0
 
-@app.route('/', methods=['GET'])
-def index():
-    return render_template('index.html')
-
-@app.route("/scikit-learn/identify", methods=["POST"])
-def scikit_learn_identify():
-    # Call the function to fetch total CPU and memory requests and limits
-    total_requests_cpu, total_requests_memory, total_limits_cpu, total_limits_memory = get_total_resource_requests_and_limits()
-
-    # Create a DataFrame for the cluster requests and limits
-    cluster_data = pd.DataFrame([
-        {'vCPU': total_requests_cpu, 'Memory': total_requests_memory, 'Price': 0},
-        {'vCPU': total_limits_cpu, 'Memory': total_limits_memory, 'Price': 0}
-    ])
-
-    # Predict the common neighbor instance type for the cluster
-    predicted_instance_type = knn.predict(cluster_data)
-
-    response = {
-        'predicted_instance_type': predicted_instance_type[0],
-        'total_cpu_requests': total_requests_cpu,
-        'total_memory_requests': total_requests_memory,
-        'total_cpu_limits': total_limits_cpu,
-        'total_memory_limits': total_limits_memory
-    }
-
-    return jsonify(response)
-
-@app.route("/openapi/identify", methods=["POST"])
-def openapi_identify():
-    # Call the function to fetch total CPU and memory requests and limits
-    total_requests_cpu, total_requests_memory, total_limits_cpu, total_limits_memory = get_total_resource_requests_and_limits()
-    return openapi_model.get_instance(total_requests_cpu, total_requests_memory)
-
 def build_scikit_model(knn):
     # Fetch AWS EC2 instance data
-    # aws_instance_data = fetch_aws_instance_data()
+    aws_instance_data = fetch_aws_instance_data()
 
     # Fetch Azure VM instance data
     azure_instance_data = fetch_azure_instance_data()
 
     # Combine AWS and Azure instance data
-    # instance_data = aws_instance_data + azure_instance_data
-    instance_data = azure_instance_data
-
+    instance_data = aws_instance_data + azure_instance_data
+    
     # Create a pandas DataFrame
     df = pd.DataFrame(instance_data)
 
@@ -224,14 +190,52 @@ def build_scikit_model(knn):
     X = df[['vCPU', 'Memory', 'Price']]
     y = df['InstanceType']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    print("Training KNN Model")
     knn.fit(X_train, y_train)
+    print("KNN Training Complete.")
 
 
+knn = KNeighborsClassifier(n_neighbors=3)
+build_scikit_model(knn)
+openapi_model = OpenApiModel("notebook/aws.csv")
+app = Flask(__name__)
+
+@app.route('/', methods=['GET'])
+def index():
+    return render_template('index.html')
+
+@app.route("/scikit-learn/identify", methods=["POST"])
+def scikit_learn_identify():
+    global knn
+    # Call the function to fetch total CPU and memory requests and limits
+    total_requests_cpu, total_requests_memory, total_limits_cpu, total_limits_memory = get_total_resource_requests_and_limits()
+
+    # Create a DataFrame for the cluster requests and limits
+    cluster_data = pd.DataFrame([
+        {'vCPU': total_requests_cpu, 'Memory': total_requests_memory, 'Price': 0},
+        {'vCPU': total_limits_cpu, 'Memory': total_limits_memory, 'Price': 0}
+    ])
+
+    # Predict the common neighbor instance type for the cluster
+    predicted_instance_type = knn.predict(cluster_data)
+    
+    response = {
+        'Instance Type': predicted_instance_type[0],
+        'total_cpu_requests': total_requests_cpu,
+        'total_memory_requests': total_requests_memory,
+        'total_cpu_limits': total_limits_cpu,
+        'total_memory_limits': total_limits_memory
+    }
+
+    return jsonify(response)
+
+@app.route("/openapi/identify", methods=["POST"])
+def openapi_identify():
+    global openapi_model
+    # Call the function to fetch total CPU and memory requests and limits
+    total_requests_cpu, total_requests_memory, total_limits_cpu, total_limits_memory = get_total_resource_requests_and_limits()
+    return openapi_model.get_instance(total_requests_cpu, total_requests_memory)
 
 if __name__ == '__main__':
-    # Create and train the KNN classifier
-    knn = KNeighborsClassifier(n_neighbors=3)
-    build_scikit_model(knn=knn)
-    openapi_model = OpenApiModel("aws/aws_data.csv")
-
+    
     app.run(debug=True)

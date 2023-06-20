@@ -2,6 +2,7 @@ import pandas as pd
 import tiktoken
 import openai
 import os
+import pickle
 import numpy as np
 from scipy.spatial.distance import euclidean
 from dotenv import dotenv_values
@@ -23,10 +24,16 @@ def get_text_embedding(text, embeddding_mode="text-embedding-ada-002"):
     return result["data"][0]["embedding"]
 
 def get_df_embeddings(df: pd.DataFrame) -> dict[tuple[str, str], list[float]]:
-    return { idx: get_text_embedding(r.summarized) for idx, r in df.iterrows()}
+    total = df.shape[0]
+    embedding = {}
+    for idx, r in df.iterrows():
+        embedding[idx] = get_text_embedding(r.summarized)
+        print ("Completed embedding {}/{}".format(idx, total), end="\r")
+    return embedding
+    #return { idx: get_text_embedding(r.summarized) for idx, r in df.iterrows()}
 
 def calculate_vector_similarity(x: list[float], y: list[float]) -> float:
-    return np.dot(np.array(x), np.array(y))
+    return np.dot(np.array(x), np.array(y)) / (norm(np.array(x)) * norm(np.array(y)))
     #return euclidean(np.array(x), np.array(y))
 
 def get_docs_with_similarity(query: str, df_embedding: dict[(str, str), np.array]) -> list[float, (str, str)]:
@@ -82,27 +89,35 @@ def app_init(df: pd.DataFrame, document_embeddings: dict[(str, str), np.array], 
       response = get_answer(user_input, df, document_embeddings, separator_len)
       st.write(response)
 
+
+class OpenApiModel:
+    PROMPT_STR = 'Suggest cost effective instance_type(s) with a requirement of {vCPU} vCPUs and {memory} GiB of Memory.'
+    def __init__(self, location="aws.csv") -> None:
+            print("Creating Encoding")
+            encoding = tiktoken.get_encoding("cl100k_base")
+            print("Preparing Data File")
+            df = prepare_data(location, encoding)
+            self.datafile = df
+            print("Creating Document embedding")
+            self.document_embeddings = get_df_embeddings(self.datafile)
+            self.separator_len = len(encoding.encode("\n* "))
+            print("Completed Generating OpenAPI Model.")
+        
+    
+    def get_instance(self, vcpu, memory):
+        query = self.PROMPT_STR.format(vCPU=vcpu, memory=memory)
+        return get_answer(query, self.datafile, self.document_embeddings, self.separator_len)
+
+
 def app():
+    global df, document_embeddings, separator_len
+    app_init(df, document_embeddings, separator_len)
+
+if __name__ == "__main__":
+    global df, document_embeddings, separator_len
     file_location = "aws.csv"
     encoding = tiktoken.get_encoding("cl100k_base")
     df = prepare_data(file_location, encoding)
     document_embeddings = get_df_embeddings(df)
     separator_len = len(encoding.encode("\n* "))
-    app_init(df, document_embeddings, separator_len)
-
-class OpenApiModel:
-    PROMPT_STR = 'Please suggest me cost effective instance_type(s) whose vCPUs >= {vCPU} and and Memory in GiB >= {memory} and How many instances will be required.'
-    def __init__(self, location="aws.csv") -> None:
-        encoding = tiktoken.get_encoding("cl100k_base")
-        df = prepare_data(location, encoding)
-        self.datafile = df
-        document_embeddings = get_df_embeddings(df)
-        self.document_embeddings = document_embeddings
-        self.separator_len = len(encoding.encode("\n* "))
-
-    def get_instance(self, vcpu, memory):
-        query = self.PROMPT_STR.format(vCPU=vcpu, memory=memory)
-        return get_answer(query, self.datafile, self.document_embeddings, self.separator_len)
-
-if __name__ == "__main__":
     app()
